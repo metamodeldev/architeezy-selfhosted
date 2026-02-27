@@ -57,7 +57,7 @@ server {
     proxy_set_header X-Forwarded-Port $server_port;
 
     location / {
-        proxy_pass http://localhost:8280;
+        proxy_pass http://localhost:8080;
     }
 }
 
