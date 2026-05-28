@@ -5,7 +5,7 @@ A simple modeling tool for IT architects and others. You can use it on <https://
 To run it locally checkout the repository:
 
 ```bash
-git@github.com:metamodeldev/architeezy-selfhosted.git
+git clone git@github.com:metamodeldev/architeezy-selfhosted.git
 cd architeezy-selfhosted
 ```
 
