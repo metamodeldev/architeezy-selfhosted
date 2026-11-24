@@ -2,19 +2,37 @@ name: architeezy
 
 services:
   frontend:
-    image: aresekb/architeezy-frontend:latest
+    image: aresekb/architeezy-frontend:2026.11.0
     container_name: architeezy-frontend
     depends_on:
       api-gateway:
         condition: service_healthy
+    mem_limit: 768m
+    memswap_limit: 1g
+    pids_limit: 512
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '3'
     environment:
       API_GATEWAY_URL: http://architeezy-api-gateway:8081
+    tmpfs:
+      - /tmp:size=512m,mode=1777
+      - /etc/nginx/conf.d:mode=1777
     ports:
-      - 127.0.0.1:${FRONTEND_PORT}:80
+      - 127.0.0.1:${FRONTEND_PORT}:8080
+    networks:
+      - architeezy-net
     restart: unless-stopped
 
   api-gateway:
-    image: aresekb/architeezy-api-gateway:latest
+    image: aresekb/architeezy-api-gateway:2026.11.0
     container_name: architeezy-api-gateway
     depends_on:
       redis:
@@ -23,8 +41,25 @@ services:
         condition: service_healthy
       keycloak:
         condition: service_healthy
+    mem_limit: 2g
+    memswap_limit: 2560m
+    pids_limit: 4096
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '3'
     environment:
       APPLICATION_URL: ${APPLICATION_URL}
+      ABOUT_URL: ${ABOUT_URL}
+      DOCUMENTATION_URL: ${DOCUMENTATION_URL}
+      APPLICATIONS_URL: ${APPLICATIONS_URL}
+      LANGUAGES: ${LANGUAGES}
       BACKEND_URL: http://backend:8082
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
       ALLOWED_ORIGIN_PATTERNS: ${ALLOWED_ORIGIN_PATTERNS}
@@ -50,6 +85,10 @@ services:
       SMTP_STARTTLS_ENABLED: ${SMTP_STARTTLS_ENABLED}
       SMTP_MAIL_FROM: ${SMTP_MAIL_FROM}
       SMTP_MAIL_TO: ${SMTP_MAIL_TO}
+    tmpfs:
+      - /tmp:size=512m
+    networks:
+      - architeezy-net
     extra_hosts:
       - 'host.docker.internal:host-gateway'
     healthcheck:
@@ -59,6 +98,20 @@ services:
   redis:
     image: redis:8.6.3-alpine3.23
     container_name: architeezy-redis
+    mem_limit: 256m
+    memswap_limit: 512m
+    pids_limit: 512
+    read_only: true
+    user: '999:1000'
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '3'
     command: redis-server --appendonly yes --requirepass "${REDIS_PASSWORD}"
     environment:
       SPRING_DATA_REDIS_PASSWORD: ${REDIS_PASSWORD}
@@ -66,19 +119,34 @@ services:
       - architeezy-redis-data:/data
     ports:
       - 127.0.0.1:${REDIS_PORT}:6379
+    networks:
+      - architeezy-net
     healthcheck:
       test: ['CMD-SHELL', 'redis-cli -a $REDIS_PASSWORD ping | grep PONG']
       start_period: 30s
     restart: unless-stopped
 
   backend:
-    image: aresekb/architeezy-backend:latest
+    image: aresekb/architeezy-backend:2026.11.0
     container_name: architeezy-backend
     depends_on:
       db:
         condition: service_healthy
       keycloak:
         condition: service_healthy
+    mem_limit: 6g
+    memswap_limit: 8g
+    pids_limit: 4096
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '3'
     environment:
       APPLICATION_URL: ${APPLICATION_URL}
       METAMODEL_URL: ${METAMODEL_URL}
@@ -87,10 +155,19 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/architeezy?stringtype=unspecified
       SPRING_DATASOURCE_USERNAME: ${DATABASE_USERNAME}
       SPRING_DATASOURCE_PASSWORD: ${DATABASE_PASSWORD}
-      OPENAI_URL: ${OPENAI_URL}
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
-      OPENAI_MODEL: ${OPENAI_MODEL}
-      OPENAI_TEMPERATURE: ${OPENAI_TEMPERATURE}
+      AI_ACP_ENDPOINT: ${AI_ACP_ENDPOINT:-ws://opencode:8090/acp}
+      AI_ACP_AUTH_TOKEN: ${AI_ACP_AUTH_TOKEN}
+      AI_ACP_CONNECT_TIMEOUT: ${AI_ACP_CONNECT_TIMEOUT:-10s}
+      AI_VALIDATION_BASE_URL: ${LLM_1_URL:+http://llm-proxy:4000/v1}
+      AI_VALIDATION_API_KEY: ${LLM_PROXY_KEY}
+      AI_VALIDATION_MODEL: llm
+      AI_VALIDATION_OUTPUT_LIMIT: ${AI_VALIDATION_OUTPUT_LIMIT:-51200}
+      AI_CHAT_TIMEOUT: ${AI_CHAT_TIMEOUT:-15m}
+      METAMODEL_MCP_URL: ${METAMODEL_MCP_URL:-http://backend:8082/mcp}
+    tmpfs:
+      - /tmp:size=2g
+    networks:
+      - architeezy-net
     extra_hosts:
       - 'host.docker.internal:host-gateway'
     healthcheck:
@@ -100,25 +177,59 @@ services:
   db:
     image: postgres:18.4-alpine3.23
     container_name: architeezy-db
+    mem_limit: 1g
+    memswap_limit: 1536m
+    shm_size: 256m
+    pids_limit: 1024
+    read_only: true
+    user: '70:70'
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '3'
     environment:
+      LANG: C.UTF-8
       POSTGRES_DB: architeezy
       POSTGRES_USER: ${DATABASE_USERNAME}
       POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
     volumes:
       - architeezy-db-data:/var/lib/postgresql
+    tmpfs:
+      - /run/postgresql:mode=1777
+      - /tmp
     ports:
       - 127.0.0.1:${DATABASE_PORT}:5432
+    networks:
+      - architeezy-net
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U $DATABASE_USERNAME']
       start_period: 30s
     restart: unless-stopped
 
   keycloak:
-    image: aresekb/architeezy-keycloak:latest
+    image: aresekb/architeezy-keycloak:26.6.2
     container_name: architeezy-keycloak
     depends_on:
       keycloak-db:
         condition: service_healthy
+    mem_limit: 1536m
+    memswap_limit: 2g
+    pids_limit: 4096
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '3'
     environment:
       KC_HOSTNAME: ${KEYCLOAK_URL}
       KC_HTTP_ENABLED: true
@@ -130,8 +241,16 @@ services:
       KEYCLOAK_REDIRECT_URL: ${API_GATEWAY_URL}/login/oauth2/code/keycloak
       KEYCLOAK_WEB_ORIGIN_URL: ${APPLICATION_URL}
       KEYCLOAK_JUPYTERHUB_URL: ${JUPYTERHUB_URL}
+    tmpfs:
+      # Keycloak only needs a writable scratch dir; mounting the whole data
+      # directory would shadow the realm baked into data/import and leave the
+      # server with nothing but the master realm.
+      - /tmp
+      - /opt/keycloak/data/tmp:mode=1777
     ports:
       - 127.0.0.1:${KEYCLOAK_PORT}:8080
+    networks:
+      - architeezy-net
     healthcheck:
       start_period: 60s
     restart: unless-stopped
@@ -139,20 +258,122 @@ services:
   keycloak-db:
     image: postgres:18.4-alpine3.23
     container_name: architeezy-keycloak-db
+    mem_limit: 1g
+    memswap_limit: 1536m
+    shm_size: 256m
+    pids_limit: 1024
+    read_only: true
+    user: '70:70'
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '3'
     environment:
+      LANG: C.UTF-8
       POSTGRES_DB: keycloak
       POSTGRES_USER: ${KEYCLOAK_DATABASE_USERNAME}
       POSTGRES_PASSWORD: ${KEYCLOAK_DATABASE_PASSWORD}
     volumes:
       - architeezy-keycloak-db-data:/var/lib/postgresql
+    tmpfs:
+      - /run/postgresql:mode=1777
+      - /tmp
     ports:
       - 127.0.0.1:${KEYCLOAK_DATABASE_PORT}:5432
+    networks:
+      - architeezy-net
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U $KEYCLOAK_DATABASE_USERNAME']
       start_period: 30s
+    restart: unless-stopped
+
+  opencode:
+    image: aresekb/architeezy-opencode:2026.11.0
+    container_name: architeezy-opencode
+    depends_on:
+      llm-proxy:
+        condition: service_healthy
+    environment:
+      AI_ACP_AUTH_TOKEN: ${AI_ACP_AUTH_TOKEN}
+      OPENCODE_LLM_BASE_URL: ${LLM_1_URL:+http://llm-proxy:4000/v1}
+      OPENCODE_LLM_API_KEY: ${LLM_PROXY_KEY:?Set LLM_PROXY_KEY in the shared .env}
+      OPENCODE_LLM_TIMEOUT: ${OPENCODE_LLM_TIMEOUT:-300000}
+      OPENCODE_CONTEXT_LIMIT: ${OPENCODE_CONTEXT_LIMIT:-200000}
+      OPENCODE_OUTPUT_LIMIT: ${OPENCODE_OUTPUT_LIMIT:-16384}
+      ACP_MAX_PROCESSES: ${AI_ACP_MAX_PROCESSES:-8}
+      ACP_RETENTION_DAYS: ${AI_ACP_RETENTION_DAYS:-30}
+      ACP_MAX_CONVERSATIONS: ${AI_ACP_MAX_CONVERSATIONS:-1000}
+    volumes:
+      - architeezy-opencode-data:/data
+    networks:
+      - architeezy-net
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    expose:
+      - '8090'
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=256m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '3'
+    stop_grace_period: 15s
+    restart: unless-stopped
+
+  llm-proxy:
+    image: aresekb/architeezy-llm-proxy:2026.11.0
+    container_name: architeezy-llm-proxy
+    environment:
+      LLM_PROXY_KEY: ${LLM_PROXY_KEY:?Set LLM_PROXY_KEY in the shared .env}
+      LLM_1_URL: ${LLM_1_URL:-}
+      LLM_1_MODEL: ${LLM_1_MODEL:-}
+      LLM_1_KEY: ${LLM_1_KEY:-}
+      LLM_2_URL: ${LLM_2_URL:-}
+      LLM_2_MODEL: ${LLM_2_MODEL:-}
+      LLM_2_KEY: ${LLM_2_KEY:-}
+      LLM_3_URL: ${LLM_3_URL:-}
+      LLM_3_MODEL: ${LLM_3_MODEL:-}
+      LLM_3_KEY: ${LLM_3_KEY:-}
+    networks:
+      - architeezy-net
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    mem_limit: 1g
+    memswap_limit: 1536m
+    pids_limit: 512
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=256m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '3'
     restart: unless-stopped
 
 volumes:
   architeezy-db-data:
   architeezy-redis-data:
   architeezy-keycloak-db-data:
+  architeezy-opencode-data:
+
+networks:
+  architeezy-net:
+    name: architeezy-net
+    driver: bridge

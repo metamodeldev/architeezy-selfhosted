@@ -9,6 +9,10 @@ git clone git@github.com:metamodeldev/architeezy-selfhosted.git
 cd architeezy-selfhosted
 ```
 
+For the AI assistant, start Ollama on the Docker host and run
+`ollama pull qwen3.5:0.8b-q8_0`. To use another model provider or disable
+the assistant, edit the model settings in `.env`.
+
 Run the application:
 
 ```bash
